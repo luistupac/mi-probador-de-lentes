@@ -14,7 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Detector de ojos estándar de OpenCV
+# Detector básico de ojos de OpenCV
 detector_ojos = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
 
 @app.post("/probar-lentes")
@@ -37,15 +37,15 @@ async def probar_lentes(
     h_rostro, w_rostro, _ = rostro.shape
     gris = cv2.cvtColor(rostro, cv2.COLOR_BGR2GRAY)
     
-    # Detectar ojos en la imagen
+    # Buscar ojos en la foto
     ojos = detector_ojos.detectMultiScale(gris, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-    # Si no encuentra dos ojos, devuelve la imagen original para evitar bloqueos
+    # Si falta algún ojo, devolvemos la imagen original para evitar que se caiga la app
     if len(ojos) < 2:
         _, im_png = cv2.imencode('.png', rostro)
         return Response(content=im_png.tobytes(), media_type="image/png")
 
-    # Ordenar los ojos de izquierda a derecha de la pantalla
+    # Ordenamos los ojos de izquierda a derecha de la pantalla
     ojos = sorted(ojos, key=lambda x: x[0])
     
     ex1, ey1, ew1, eh1 = ojos[0]
@@ -54,18 +54,18 @@ async def probar_lentes(
     ojo_izq = np.array([ex1 + ew1//2, ey1 + eh1//2])
     ojo_der = np.array([ex2 + ew2//2, ey2 + eh2//2])
 
-    # Encontrar la mitad de los ojos y medir la distancia
+    # Calcular centro y distancia entre ambos ojos
     centro_ojos = ((ojo_izq + ojo_der) / 2).astype(int)
     distancia_ojos = np.linalg.norm(ojo_der - ojo_izq)
     
-    # Redimensionar lentes con base en la distancia calculada
+    # Cambiar tamaño de los lentes según la distancia de los ojos
     ancho_lentes = int(distancia_ojos * 2.2)
     escala = ancho_lentes / lentes.shape[1]
     alto_lentes = int(lentes.shape[0] * escala)
 
     lentes_resiz = cv2.resize(lentes, (ancho_lentes, alto_lentes))
 
-    # Calcular la rotación
+    # Calcular la inclinación de la cara
     d_y = ojo_der[1] - ojo_izq[1]
     d_x = ojo_der[0] - ojo_izq[0]
     angulo = np.degrees(np.arctan2(d_y, d_x))
