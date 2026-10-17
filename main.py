@@ -2,7 +2,7 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 import cv2
-import mediapipe.python.solutions.face_mesh as mp_face_mesh
+import mediapipe as mp
 import numpy as np
 
 app = FastAPI()
@@ -15,6 +15,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Inicialización estándar y segura para servidores
+mp_face_mesh = mp.solutions.face_mesh
 face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1)
 
 @app.post("/probar-lentes")
@@ -31,6 +33,9 @@ async def probar_lentes(
     nparr_lentes = np.frombuffer(bytes_lentes, np.uint8)
     lentes = cv2.imdecode(nparr_lentes, cv2.IMREAD_UNCHANGED)
 
+    if rostro is None or lentes is None:
+        return Response(content=b"Error al leer las imagenes", media_type="text/plain", status_code=400)
+
     h_rostro, w_rostro, _ = rostro.shape
     rgb_rostro = cv2.cvtColor(rostro, cv2.COLOR_BGR2RGB)
     
@@ -40,9 +45,9 @@ async def probar_lentes(
         _, im_png = cv2.imencode('.png', rostro)
         return Response(content=im_png.tobytes(), media_type="image/png")
 
-    landmarks = resultados.multi_face_landmarks.landmark
+    landmarks = resultados.multi_face_landmarks[0].landmark
     
-    # Puntos de referencia estables para los ojos
+    # Puntos fijos para las esquinas de los ojos (130 y 359)
     ojo_izq = np.array([landmarks[130].x * w_rostro, landmarks[130].y * h_rostro])
     ojo_der = np.array([landmarks[359].x * w_rostro, landmarks[359].y * h_rostro])
 
