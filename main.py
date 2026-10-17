@@ -2,7 +2,6 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 import cv2
-import mediapipe as mp
 import numpy as np
 
 app = FastAPI()
@@ -15,9 +14,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Inicialización estándar y segura para servidores
-mp_face_mesh = mp.solutions.face_mesh
-face_mesh = mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1)
+# Cargamos los detectores inteligentes de OpenCV para ojos
+detector_ojos = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
 
 @app.post("/probar-lentes")
 async def probar_lentes(
@@ -37,29 +35,37 @@ async def probar_lentes(
         return Response(content=b"Error al leer las imagenes", media_type="text/plain", status_code=400)
 
     h_rostro, w_rostro, _ = rostro.shape
-    rgb_rostro = cv2.cvtColor(rostro, cv2.COLOR_BGR2RGB)
+    gris = cv2.cvtColor(rostro, cv2.COLOR_BGR2GRAY)
     
-    resultados = face_mesh.process(rgb_rostro)
+    # Buscamos los ojos en la foto
+    ojos = detector_ojos.detectMultiScale(gris, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-    if not resultados.multi_face_landmarks:
+    # Si no detecta exactamente dos ojos, devolvemos la foto limpia para que no falle
+    if len(ojos) < 2:
         _, im_png = cv2.imencode('.png', rostro)
         return Response(content=im_png.tobytes(), media_type="image/png")
 
-    landmarks = resultados.multi_face_landmarks[0].landmark
+    # Ordenamos los ojos de izquierda a derecha
+    ojos = sorted(ojos, key=lambda x: x[0])
     
-    # Puntos fijos para las esquinas de los ojos (130 y 359)
-    ojo_izq = np.array([landmarks[130].x * w_rostro, landmarks[130].y * h_rostro])
-    ojo_der = np.array([landmarks[359].x * w_rostro, landmarks[359].y * h_rostro])
+    # Calculamos el centro de cada ojo
+    ex1, ey1, ew1, eh1 = ojos[0]
+    ex2, ey2, ew2, eh2 = ojos[1]
+    
+    ojo_izq = np.array([ex1 + ew1//2, ey1 + eh1//2])
+    ojo_der = np.array([ex2 + ew2//2, ey2 + eh2//2])
 
+    # Posicionamos los lentes en medio de ambos ojos
     centro_ojos = ((ojo_izq + ojo_der) / 2).astype(int)
     distancia_ojos = np.linalg.norm(ojo_der - ojo_izq)
     
-    ancho_lentes = int(distancia_ojos * 2.1)
+    ancho_lentes = int(distancia_ojos * 2.2)
     escala = ancho_lentes / lentes.shape[1]
     alto_lentes = int(lentes.shape[0] * escala)
 
     lentes_resiz = cv2.resize(lentes, (ancho_lentes, alto_lentes))
 
+    # Calculamos la inclinación de la cabeza
     d_y = ojo_der[1] - ojo_izq[1]
     d_x = ojo_der[0] - ojo_izq[0]
     angulo = np.degrees(np.arctan2(d_y, d_x))
