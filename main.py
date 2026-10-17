@@ -42,7 +42,7 @@ async def probar_lentes(
 
     landmarks = resultados.multi_face_landmarks.landmark
     
-    # Puntos de referencia para las esquinas externas de los ojos
+    # Puntos de referencia estables para los ojos
     ojo_izq = np.array([landmarks[130].x * w_rostro, landmarks[130].y * h_rostro])
     ojo_der = np.array([landmarks[359].x * w_rostro, landmarks[359].y * h_rostro])
 
